@@ -8,8 +8,7 @@ import Animated, {
   useSharedValue, 
   useAnimatedStyle, 
   withSpring, 
-  withTiming,
-  Easing 
+  withTiming
 } from 'react-native-reanimated';
 
 // Demo profiles
@@ -153,6 +152,7 @@ const styles = StyleSheet.create({
   header: {
     padding: 20,
     alignItems: 'center',
+    marginTop: 10,
   },
   title: {
     fontSize: 28,
@@ -174,6 +174,7 @@ const styles = StyleSheet.create({
   profilesContainer: {
     flex: 1,
     padding: 20,
+    marginTop: 10,
   },
   profileCard: {
     backgroundColor: '#1a1a2e',

@@ -8,15 +8,14 @@ import { openSession, sendUserAudio } from '../src/api';
 import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Audio } from 'expo-av';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
   withSpring, 
   withTiming,
-  Easing,
   interpolate,
-  Extrapolate,
-  runOnJS
+  Extrapolate
 } from 'react-native-reanimated';
 
 export default function RolePlayScreen() {
@@ -25,12 +24,16 @@ export default function RolePlayScreen() {
   const { book, chapter, profile, history } = useSelector((state: RootState) => state.session);
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false); // New state for processing indicator
   const [initialBotMessage, setInitialBotMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const sessionId = useRef<string | null>(null);
   const playerRef = useRef<Audio.Sound | null>(null);
   const currentAudioSourceRef = useRef<string | null>(null);
-  
+  const scrollViewRef = useRef<ScrollView>(null);
+  const contentHeightRef = useRef<number>(0);
+  const [isCloseToBottom, setIsCloseToBottom] = useState(true);
+
   // Animation values
   const pulse = useSharedValue(0);
   const recordScale = useSharedValue(1);
@@ -85,6 +88,25 @@ export default function RolePlayScreen() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    // Scroll to bottom when history changes, but only if we were close to bottom before
+    if (scrollViewRef.current && isCloseToBottom) {
+      // Use a longer timeout to ensure layout is complete
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 300);
+    }
+  }, [history, isCloseToBottom]);
+
+  // Remove the duplicate scroll handling and improve the logic
+  const handleScroll = (nativeEvent: any) => {
+    const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+    // More accurate calculation for determining if user is at bottom
+    const paddingToBottom = 20;
+    const isClose = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+    setIsCloseToBottom(isClose);
+  };
 
   const startNewSession = async () => {
     try {
@@ -208,6 +230,7 @@ export default function RolePlayScreen() {
   };
 
   const handleRecordPress = async () => {
+    if(isPlaying) return
     recordScale.value = withSpring(0.9, { damping: 10 });
     
     if (isRecording) {
@@ -218,6 +241,7 @@ export default function RolePlayScreen() {
         
         // Send audio to backend
         if (audioBase64 && sessionId.current && book && chapter && profile) {
+          setIsProcessing(true); // Show processing indicator
           const response = await sendUserAudio(
             audioBase64,
             sessionId.current,
@@ -225,6 +249,7 @@ export default function RolePlayScreen() {
             chapter,
             profile
           );
+          setIsProcessing(false); // Hide processing indicator
           
           // Add user's message to history
           dispatch(addTurn({ role: 'user', text: '[Audio Message]' }));
@@ -247,6 +272,7 @@ export default function RolePlayScreen() {
         console.error('Failed to send audio:', error);
         Alert.alert('Error', 'Failed to send audio. Please try again.');
         setIsRecording(false);
+        setIsProcessing(false); // Hide processing indicator on error
         recordScale.value = withSpring(1, { damping: 10 });
       }
     } else {
@@ -262,7 +288,23 @@ export default function RolePlayScreen() {
     }
   };
 
-  const handleEndSession = () => {
+  const handleEndSession = async () => {
+    // Stop any playing audio
+    if (playerRef.current) {
+      try {
+        await playerRef.current.stopAsync();
+        setIsPlaying(false);
+      } catch (error) {
+        console.log('Error stopping audio:', error);
+      }
+    }
+    
+    // Stop recording if in progress
+    if (isRecording) {
+      await recorder.stop();
+      setIsRecording(false);
+    }
+    
     router.push('./feedback');
   };
 
@@ -270,6 +312,14 @@ export default function RolePlayScreen() {
   const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
   const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
   
+  // Initialize scroll position tracking
+  useEffect(() => {
+    // Set initial scroll position tracking after first render
+    setTimeout(() => {
+      setIsCloseToBottom(true); // Start with user at bottom
+    }, 500);
+  }, []);
+
   // Animated styles
   const pulseStyle = useAnimatedStyle(() => {
     return {
@@ -295,13 +345,16 @@ export default function RolePlayScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Role Play</Text>
-        <Text style={styles.subtitle}>
-          {book} - {chapter}
-          {'\n'}
-          Role: {profile}
-        </Text>
+      {/* Header bar with back button, title, and end session button */}
+      <View style={styles.headerBar}>
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {book} - {chapter}
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.headerButton} onPress={handleEndSession}>
+          <Text style={styles.endSessionText}>End</Text>
+        </TouchableOpacity>
       </View>
       
       {isLoading ? (
@@ -310,7 +363,27 @@ export default function RolePlayScreen() {
           <Text style={styles.loadingText}>Initializing session...</Text>
         </View>
       ) : (
-        <AnimatedScrollView style={styles.historyContainer} showsVerticalScrollIndicator={false}>
+        <AnimatedScrollView 
+          ref={scrollViewRef}
+          style={styles.historyContainer} 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.historyContent}
+          onScroll={({ nativeEvent }) => handleScroll(nativeEvent)}
+          scrollEventThrottle={16} // Increased frequency for smoother tracking
+          onContentSizeChange={(width, height) => {
+            // Track content height changes
+            const previousHeight = contentHeightRef.current;
+            contentHeightRef.current = height;
+            
+            // When content size increases, scroll to bottom if we were close to bottom
+            if (isCloseToBottom && scrollViewRef.current && height > previousHeight) {
+              // Reduced timeout for faster response
+              setTimeout(() => {
+                scrollViewRef.current?.scrollToEnd({ animated: true });
+              }, 100);
+            }
+          }}
+        >
           {history.map((turn, index) => {
             const isLatestMessage = index === history.length - 1;
             return (
@@ -322,44 +395,56 @@ export default function RolePlayScreen() {
                   isLatestMessage && messageStyle
                 ]}
               >
+                <Text style={styles.speakerLabel}>
+                  {turn.role === 'user' ? 'You' : 'Tutor'}
+                </Text>
                 <Text style={styles.messageText}>{turn.text}</Text>
+                <Text style={styles.timestamp}>
+                  {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
               </Animated.View>
             );
           })}
           
           {initialBotMessage && history.length === 0 && (
             <Animated.View style={[styles.messageBubble, styles.botMessage, messageStyle]}>
+              <Text style={styles.speakerLabel}>Tutor</Text>
               <Text style={styles.messageText}>{initialBotMessage}</Text>
+              <Text style={styles.timestamp}>
+                {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </Text>
             </Animated.View>
           )}
         </AnimatedScrollView>
       )}
       
-      <View style={styles.controlsContainer}>
-        <AnimatedTouchableOpacity
-          style={[
-            styles.recordButton,
-            isRecording && styles.recordingButton,
-            isPlaying && styles.disabledButton,
-            recordButtonStyle,
-            isRecording && pulseStyle
-          ]}
-          onPress={handleRecordPress}
-          disabled={isPlaying || isLoading}
-        >
-          <Text style={styles.recordButtonText}>
-            {isRecording ? 'Stop Recording' : 'Start Recording'}
-          </Text>
-        </AnimatedTouchableOpacity>
-        
-        <AnimatedTouchableOpacity
-          style={styles.endButton}
-          onPress={handleEndSession}
-          disabled={isLoading}
-        >
-          <Text style={styles.endButtonText}>End Session</Text>
-        </AnimatedTouchableOpacity>
-      </View>
+      {/* Record button moved to bottom */}
+      {isLoading ? null :<AnimatedTouchableOpacity
+        style={[
+          styles.recordButton,
+          isPlaying && styles.playingButton,
+          isRecording && styles.recordingButton,
+          recordButtonStyle
+        ]}
+        onPress={handleRecordPress}
+        activeOpacity={0.8}
+      >
+        <Animated.View style={pulseStyle}>
+          <Ionicons 
+            name={isPlaying ? "volume-high" : isRecording ? "square" : "mic"} 
+            size={32} 
+            color="#FFFFFF" 
+          />
+        </Animated.View>
+      </AnimatedTouchableOpacity>}
+      
+      {/* Processing indicator */}
+      {isProcessing && (
+        <View style={styles.processingContainer}>
+          <ActivityIndicator size="small" color="#007AFF" />
+          <Text style={styles.processingText}>Processing your response...</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -367,27 +452,41 @@ export default function RolePlayScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f0f1a',
+    backgroundColor: '#f8f9fa',
   },
-  header: {
-    padding: 20,
+  headerBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#ffffff',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eaeaea',
   },
-  title: {
-    fontSize: 28,
+  headerButton: {
+    padding: 10,
+    minWidth: 50,
+  },
+  headerTitleContainer: {
+    flex: 1,
+    paddingHorizontal: 10,
+  },
+  headerTitle: {
+    fontSize: 18,
     fontWeight: '700',
-    marginBottom: 8,
+    color: '#333333',
     textAlign: 'center',
-    color: '#ffffff',
-    textShadowColor: 'rgba(0, 122, 255, 0.5)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
   },
-  subtitle: {
+  endSessionText: {
     fontSize: 16,
-    color: '#a0a0c0',
-    textAlign: 'center',
-    lineHeight: 22,
+    color: '#FF3B30',
+    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,
@@ -397,88 +496,137 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 18,
-    color: '#a0a0c0',
+    color: '#666666',
   },
   historyContainer: {
     flex: 1,
+  },
+  historyContent: {
     padding: 20,
+    paddingBottom: 140, // Space for floating panel
+  },
+  processingContainer: {
+    position: 'absolute',
+    bottom: 120,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    zIndex: 10, // Ensure it appears above other elements
+  },
+  processingText: {
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#666666',
+    fontWeight: '500',
   },
   messageBubble: {
-    padding: 20,
-    borderRadius: 20,
+    padding: 16,
+    borderRadius: 18,
     marginBottom: 15,
     maxWidth: '85%',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
   userMessage: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#ffffff',
     alignSelf: 'flex-end',
     borderBottomRightRadius: 8,
-    shadowColor: '#007AFF',
+    borderLeftWidth: 3,
+    borderLeftColor: '#007AFF',
   },
   botMessage: {
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#f0f4f8',
     alignSelf: 'flex-start',
     borderBottomLeftRadius: 8,
-    borderWidth: 1,
-    borderColor: '#2d2d4d',
+    borderRightWidth: 3,
+    borderRightColor: '#34C759',
+  },
+  speakerLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 5,
+    color: '#333333',
   },
   messageText: {
     fontSize: 16,
-    color: '#ffffff',
+    color: '#333333',
     lineHeight: 22,
   },
-  controlsContainer: {
-    alignItems: 'center',
-    padding: 20,
+  timestamp: {
+    fontSize: 11,
+    color: '#999999',
+    marginTop: 8,
+    textAlign: 'right',
   },
   recordButton: {
-    backgroundColor: '#34C759',
-    padding: 20,
-    borderRadius: 50,
+    position: 'absolute',
+    bottom: 30, // Positioned at bottom
+    alignSelf: 'center',
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
     alignItems: 'center',
-    width: '80%',
-    marginBottom: 25,
-    shadowColor: '#34C759',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 15,
-    elevation: 8,
-  },
-  recordingButton: {
-    backgroundColor: '#FF3B30',
-    shadowColor: '#FF3B30',
-  },
-  disabledButton: {
-    backgroundColor: '#2c2c4c',
-    shadowOpacity: 0.1,
-  },
-  recordButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  endButton: {
-    backgroundColor: '#FF9500',
-    padding: 18,
-    borderRadius: 25,
-    alignItems: 'center',
-    width: '80%',
-    shadowColor: '#FF9500',
+    shadowColor: '#007AFF',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 6,
   },
-  endButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 1,
+  recordingButton: {
+    backgroundColor: '#FF3B30',
+    shadowColor: '#FF3B30',
+  },
+  playingButton: {
+    backgroundColor: '#34C759',
+    shadowColor: '#34C759',
+  },
+  disabledButton: {
+    backgroundColor: '#cccccc',
+    shadowOpacity: 0.1,
+  },
+  bottomNavBar: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: 'white',
+    borderRadius: 30,
+    paddingVertical: 15,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+    borderWidth: 1,
+    borderColor: '#eaeaea',
+  },
+  navItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 60,
+  },
+  navText: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  activeNavText: {
+    color: '#007AFF',
+    fontWeight: '600',
   },
 });
