@@ -1,0 +1,2 @@
+# This file is not needed for Expo/React Native projects
+# Dependencies are managed through package.json and npm/yarn/pnpm
