@@ -5,7 +5,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../src/store';
 import { addTurn, setSessionId } from '../src/store/sessionSlice';
 import { openSession, sendUserAudio } from '../src/api';
-import { useAudioRecorder, RecordingPresets, useAudioPlayer } from 'expo-audio';
+import { useAudioRecorder, useAudioPlayer, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
 
 export default function RolePlayScreen() {
@@ -15,25 +15,57 @@ export default function RolePlayScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [initialBotMessage, setInitialBotMessage] = useState<string | null>(null);
+  const [currentAudioSource, setCurrentAudioSource] = useState<string | null>(null);
   const sessionId = useRef<string | null>(null);
-  const playerRef = useRef<ReturnType<typeof useAudioPlayer> | null>(null);
 
-  const recorder = useAudioRecorder(
-    RecordingPresets.HIGH_QUALITY,
-    (status) => console.log('Recording status:', status)
-  );
+  // Initialize audio recorder
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  
+  // Initialize audio player
+  const player = useAudioPlayer(currentAudioSource || '');
 
   useEffect(() => {
+    // Set up audio mode and request permissions on component mount
+    (async () => {
+      try {
+        // Request recording permissions
+        const status = await AudioModule.requestRecordingPermissionsAsync();
+        if (!status.granted) {
+          Alert.alert('Permission Required', 'Please allow microphone access to record audio.');
+        }
+        
+        // Set audio mode
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          allowsRecording: true,
+        });
+      } catch (error) {
+        console.error('Failed to set up audio permissions:', error);
+      }
+    })();
+    
     // Start a new session
     startNewSession();
     
     // Cleanup function
     return () => {
-      if (recorder) {
+      if (recorder.isRecording) {
         recorder.stop();
+      }
+      if (player.playing) {
+        player.pause();
       }
     };
   }, []);
+
+  // Monitor player status
+  useEffect(() => {
+    if (player.playing) {
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(false);
+    }
+  }, [player.playing]);
 
   const startNewSession = async () => {
     try {
@@ -54,9 +86,7 @@ export default function RolePlayScreen() {
         
         // Play the initial audio
         if (response.audio_b64) {
-          setIsPlaying(true);
           await playBase64Audio(response.audio_b64);
-          setIsPlaying(false);
         }
       }
     } catch (error) {
@@ -67,8 +97,16 @@ export default function RolePlayScreen() {
 
   const startRecording = async () => {
     try {
+      // Check permissions first
+      const { granted } = await AudioModule.requestRecordingPermissionsAsync();
+      if (!granted) {
+        Alert.alert('Permission Required', 'Please allow microphone access to record audio.');
+        return;
+      }
+
+      // Prepare and start recording
       await recorder.prepareToRecordAsync();
-      recorder.record();
+      await recorder.record();
       setIsRecording(true);
     } catch (error) {
       console.error('Failed to start recording:', error);
@@ -82,14 +120,14 @@ export default function RolePlayScreen() {
       await recorder.stop();
       setIsRecording(false);
       
-      // Get the recording URI
-      const recordingUri = recorder.uri;
-      if (!recordingUri) {
+      // Access the URI directly from the recorder
+      const uri = recorder.uri;
+      if (!uri) {
         throw new Error('No recording URI available');
       }
       
       // Read the recorded audio file
-      const audioBase64 = await FileSystem.readAsStringAsync(recordingUri, {
+      const audioBase64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
       
@@ -105,26 +143,21 @@ export default function RolePlayScreen() {
   const playBase64Audio = async (base64Audio: string) => {
     try {
       // Create a temporary file URI
-      const fileName = `${FileSystem.documentDirectory}temp_audio.m4a`;
+      const fileName = `${FileSystem.documentDirectory}temp_audio_${Date.now()}.m4a`;
       
       // Write the base64 audio to a file
       await FileSystem.writeAsStringAsync(fileName, base64Audio, {
         encoding: FileSystem.EncodingType.Base64,
       });
       
-      // Create an audio player for this file
-      const player = useAudioPlayer(fileName);
-      playerRef.current = player;
+      // Set the audio source for the player
+      setCurrentAudioSource(fileName);
+      
+      // Wait a brief moment for the player to load the new source
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Play the audio
-      await player.play();
-      
-      // Set up cleanup after playback finishes
-      const checkPlaybackStatus = setInterval(async () => {
-        // Since expo-audio doesn't have getStatusAsync, we'll use a different approach
-        // We'll assume playback finishes after a certain time or when the component unmounts
-        // In a real implementation, you'd want to use proper event listeners
-      }, 500);
+      player.play();
     } catch (error) {
       console.error('Failed to play audio:', error);
       Alert.alert('Error', 'Failed to play audio response.');
@@ -155,9 +188,7 @@ export default function RolePlayScreen() {
           
           // Play bot's response audio
           if (response.audio_b64) {
-            setIsPlaying(true);
             await playBase64Audio(response.audio_b64);
-            setIsPlaying(false);
           }
         }
       } catch (error) {

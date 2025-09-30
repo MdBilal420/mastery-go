@@ -2,7 +2,26 @@
 
 // Base URL for the backend API
 // In a production app, this should be configurable via environment variables
-const API_BASE_URL = 'http://localhost:8000'; // Assuming backend runs on port 8000
+// For development, we need to use the actual IP address for mobile devices
+const getApiBaseUrl = () => {
+  // Check if we're in a React Native environment (mobile)
+  if (typeof navigator !== 'undefined' && navigator.product === 'ReactNative') {
+    // Replace with your actual IP address
+    return 'http://192.168.1.137:8000';
+  }
+  
+  // For web, we can use localhost
+  if (typeof window !== 'undefined') {
+    return window.location.hostname === 'localhost' 
+      ? 'http://localhost:8000' 
+      : `http://${window.location.hostname}:8000`;
+  }
+  
+  // Default fallback
+  return 'http://localhost:8000';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 /**
  * Open a new roleplay session
@@ -18,24 +37,31 @@ export async function openSession(
   profile: string,
   sessionId?: string
 ) {
-  const response = await fetch(`${API_BASE_URL}/roleplay/open`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      book,
-      chapter,
-      profile,
-      session_id: sessionId,
-    }),
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}/roleplay/open`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        book,
+        chapter,
+        profile,
+        session_id: sessionId,
+      }),
+    });
 
-  if (!response.ok) {
-    throw new Error(`Failed to open session: ${response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`Failed to open session: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message === 'Network request failed') {
+      throw new Error('Unable to connect to the server. Please make sure the backend server is running and accessible from your device. Check that your mobile device is on the same network as your development machine.');
+    }
+    throw error;
   }
-
-  return await response.json();
 }
 
 /**
@@ -54,25 +80,32 @@ export async function sendUserAudio(
   chapter: string,
   profile: string
 ) {
-  const response = await fetch(`${API_BASE_URL}/roleplay/respond-audio`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      audio_b64: audioBase64,
-      session_id: sessionId,
-      book,
-      chapter,
-      profile,
-    }),
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}/roleplay/respond-audio`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        audio_b64: audioBase64,
+        session_id: sessionId,
+        book,
+        chapter,
+        profile,
+      }),
+    });
 
-  if (!response.ok) {
-    throw new Error(`Failed to send audio: ${response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`Failed to send audio: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message === 'Network request failed') {
+      throw new Error('Unable to connect to the server. Please make sure the backend server is running and accessible from your device. Check that your mobile device is on the same network as your development machine.');
+    }
+    throw error;
   }
-
-  return await response.json();
 }
 
 /**
@@ -82,20 +115,27 @@ export async function sendUserAudio(
  * @returns Promise with feedback summary, scores, and suggestions
  */
 export async function getFeedback(history: { role: string; text: string }[], sessionId: string) {
-  const response = await fetch(`${API_BASE_URL}/roleplay/feedback`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      history,
-      session_id: sessionId,
-    }),
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}/roleplay/feedback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        history,
+        session_id: sessionId,
+      }),
+    });
 
-  if (!response.ok) {
-    throw new Error(`Failed to get feedback: ${response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`Failed to get feedback: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message === 'Network request failed') {
+      throw new Error('Unable to connect to the server. Please make sure the backend server is running and accessible from your device. Check that your mobile device is on the same network as your development machine.');
+    }
+    throw error;
   }
-
-  return await response.json();
 }

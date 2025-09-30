@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-TTS_VOICE = os.getenv("TTS_VOICE", "aura-stella")
+TTS_VOICE = os.getenv("TTS_VOICE", "aura-2-thalia-en")
 
 async def text_to_speech(text: str) -> str:
     """
