@@ -8,30 +8,67 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Fonts } from '@/constants/theme';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withSpring, 
+  withTiming,
+  interpolate,
+  Extrapolate
+} from 'react-native-reanimated';
 
 export default function TabTwoScreen() {
+  const scale = useSharedValue(1);
+  const rotation = useSharedValue(0);
+  
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { scale: scale.value },
+        { rotateY: `${rotation.value}deg` }
+      ],
+    };
+  });
+  
   return (
     <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
+      headerBackgroundColor={{ light: '#2c2c4c', dark: '#1a1a2e' }}
       headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
+        <Animated.View style={[styles.headerImageContainer, animatedStyle]}>
+          <IconSymbol
+            size={310}
+            color="#00aaff"
+            name="chevron.left.forwardslash.chevron.right"
+            style={styles.headerImage}
+          />
+        </Animated.View>
       }>
       <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
+        <Animated.View 
+          style={animatedStyle}
+          onTouchStart={() => {
+            scale.value = withTiming(0.95, { duration: 100 });
+            rotation.value = withTiming(10, { duration: 100 });
+          }}
+          onTouchEnd={() => {
+            scale.value = withTiming(1, { duration: 100 });
+            rotation.value = withTiming(0, { duration: 100 });
+          }}
+        >
+          <ThemedText
+            type="title"
+            style={[
+              styles.title,
+              {
+                fontFamily: Fonts.rounded,
+              }
+            ]}>
+            Explore
+          </ThemedText>
+        </Animated.View>
       </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
+      
+      <AnimatedCollapsible title="File-based routing">
         <ThemedText>
           This app has two screens:{' '}
           <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
@@ -44,14 +81,16 @@ export default function TabTwoScreen() {
         <ExternalLink href="https://docs.expo.dev/router/introduction">
           <ThemedText type="link">Learn more</ThemedText>
         </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
+      </AnimatedCollapsible>
+      
+      <AnimatedCollapsible title="Android, iOS, and web support">
         <ThemedText>
           You can open this project on Android, iOS, and the web. To open the web version, press{' '}
           <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
         </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
+      </AnimatedCollapsible>
+      
+      <AnimatedCollapsible title="Images">
         <ThemedText>
           For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
           <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
@@ -64,8 +103,9 @@ export default function TabTwoScreen() {
         <ExternalLink href="https://reactnative.dev/docs/images">
           <ThemedText type="link">Learn more</ThemedText>
         </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
+      </AnimatedCollapsible>
+      
+      <AnimatedCollapsible title="Light and dark mode components">
         <ThemedText>
           This template has light and dark mode support. The{' '}
           <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
@@ -74,8 +114,9 @@ export default function TabTwoScreen() {
         <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
           <ThemedText type="link">Learn more</ThemedText>
         </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
+      </AnimatedCollapsible>
+      
+      <AnimatedCollapsible title="Animations">
         <ThemedText>
           This template includes an example of an animated component. The{' '}
           <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
@@ -93,20 +134,60 @@ export default function TabTwoScreen() {
             </ThemedText>
           ),
         })}
-      </Collapsible>
+      </AnimatedCollapsible>
     </ParallaxScrollView>
   );
 }
 
+// Animated version of Collapsible component
+function AnimatedCollapsible({ title, children }: { title: string; children: React.ReactNode }) {
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(1);
+  
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: scale.value }],
+      opacity: opacity.value,
+    };
+  });
+  
+  return (
+    <Animated.View 
+      style={[{ marginBottom: 10 }, animatedStyle]}
+      onTouchStart={() => {
+        scale.value = withTiming(0.98, { duration: 100 });
+      }}
+      onTouchEnd={() => {
+        scale.value = withTiming(1, { duration: 100 });
+      }}
+    >
+      <Collapsible title={title}>
+        {children}
+      </Collapsible>
+    </Animated.View>
+  );
+}
+
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
+  headerImageContainer: {
     bottom: -90,
     left: -35,
     position: 'absolute',
   },
+  headerImage: {
+    color: '#00aaff',
+  },
   titleContainer: {
     flexDirection: 'row',
     gap: 8,
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#ffffff',
+    textShadowColor: 'rgba(0, 170, 255, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
 });

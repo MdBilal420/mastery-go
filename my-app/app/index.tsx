@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useDispatch } from 'react-redux';
 import { setSelections } from '../src/store/sessionSlice';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withSpring, 
+  withTiming,
+  Easing 
+} from 'react-native-reanimated';
 
 // Demo content
 const BOOKS = [
@@ -29,14 +36,54 @@ export default function BookSelectionScreen() {
   const dispatch = useDispatch();
   const [selectedBook, setSelectedBook] = useState<string | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<string | null>(null);
+  
+  // Shared values for animations
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(1);
+  const bookScales = BOOKS.map(() => useSharedValue(1));
+  const chapterScales = BOOKS.flatMap(book => 
+    book.chapters.map(() => useSharedValue(1))
+  );
+  
+  // Animated styles for books
+  const bookAnimatedStyles = bookScales.map(scale => 
+    useAnimatedStyle(() => ({
+      transform: [{ scale: scale.value }],
+    }))
+  );
+  
+  // Animated styles for chapters
+  const chapterAnimatedStyles = chapterScales.map(scale => 
+    useAnimatedStyle(() => ({
+      transform: [{ scale: scale.value }],
+    }))
+  );
 
-  const handleBookSelect = (bookId: string) => {
+  const handleBookSelect = (bookId: string, bookIndex: number) => {
     setSelectedBook(bookId);
     setSelectedChapter(null); // Reset chapter selection when book changes
+    
+    // Animation for book selection
+    bookScales[bookIndex].value = withSpring(0.96, { damping: 10 });
+    setTimeout(() => {
+      bookScales[bookIndex].value = withSpring(1, { damping: 10 });
+    }, 100);
   };
 
-  const handleChapterSelect = (chapterId: string) => {
+  const handleChapterSelect = (chapterId: string, chapterIndex: number) => {
     setSelectedChapter(chapterId);
+    
+    // Animation for chapter selection
+    opacity.value = withTiming(0.7, { duration: 100 });
+    setTimeout(() => {
+      opacity.value = withTiming(1, { duration: 100 });
+    }, 100);
+    
+    // Animation for chapter selection
+    chapterScales[chapterIndex].value = withTiming(0.95, { duration: 100 });
+    setTimeout(() => {
+      chapterScales[chapterIndex].value = withTiming(1, { duration: 100 });
+    }, 100);
   };
 
   const handleContinue = () => {
@@ -59,130 +106,193 @@ export default function BookSelectionScreen() {
 
   const selectedBookData = BOOKS.find(book => book.id === selectedBook);
 
+  // Animated components
+  const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
+  const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Select a Book</Text>
+    <SafeAreaView style={styles.container}>
+      <Animated.View style={[styles.header, { opacity: opacity.value }]}>
+        <Text style={styles.title}>Select a Book</Text>
+      </Animated.View>
       
-      <ScrollView style={styles.booksContainer}>
-        {BOOKS.map(book => (
-          <TouchableOpacity
-            key={book.id}
-            style={[
-              styles.bookCard,
-              selectedBook === book.id && styles.selectedCard,
-            ]}
-            onPress={() => handleBookSelect(book.id)}
-          >
-            <Text style={styles.bookTitle}>{book.title}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <AnimatedScrollView style={styles.booksContainer}>
+        {BOOKS.map((book, bookIndex) => {
+          const isBookSelected = selectedBook === book.id;
+          
+          return (
+            <AnimatedTouchableOpacity
+              key={book.id}
+              style={[
+                styles.bookCard,
+                isBookSelected && styles.selectedCard,
+                bookAnimatedStyles[bookIndex],
+                { 
+                  shadowOpacity: isBookSelected ? 0.2 : 0.1,
+                  transform: [{ scale: isBookSelected ? 1.02 : 1 }]
+                }
+              ]}
+              onPress={() => handleBookSelect(book.id, bookIndex)}
+            >
+              <Text style={styles.bookTitle}>{book.title}</Text>
+            </AnimatedTouchableOpacity>
+          );
+        })}
+      </AnimatedScrollView>
 
       {selectedBookData && (
         <>
           <Text style={styles.subtitle}>Select a Chapter</Text>
-          <ScrollView horizontal style={styles.chaptersContainer}>
-            {selectedBookData.chapters.map(chapter => (
-              <TouchableOpacity
-                key={chapter.id}
-                style={[
-                  styles.chapterCard,
-                  selectedChapter === chapter.id && styles.selectedCard,
-                ]}
-                onPress={() => handleChapterSelect(chapter.id)}
-              >
-                <Text style={styles.chapterTitle}>{chapter.title}</Text>
-              </TouchableOpacity>
-            ))}
+          <ScrollView horizontal style={styles.chaptersContainer} showsHorizontalScrollIndicator={false}>
+            {selectedBookData.chapters.map((chapter, chapterIndex) => {
+              const isChapterSelected = selectedChapter === chapter.id;
+              
+              // Find the global index for this chapter
+              let globalChapterIndex = 0;
+              for (let i = 0; i < BOOKS.length; i++) {
+                if (BOOKS[i].id === selectedBook) {
+                  globalChapterIndex += chapterIndex;
+                  break;
+                }
+                globalChapterIndex += BOOKS[i].chapters.length;
+              }
+              
+              return (
+                <AnimatedTouchableOpacity
+                  key={chapter.id}
+                  style={[
+                    styles.chapterCard,
+                    isChapterSelected && styles.selectedCard,
+                    chapterAnimatedStyles[globalChapterIndex],
+                    { 
+                      shadowOpacity: isChapterSelected ? 0.25 : 0.15,
+                      transform: [{ scale: isChapterSelected ? 1.05 : 1 }]
+                    }
+                  ]}
+                  onPress={() => handleChapterSelect(chapter.id, globalChapterIndex)}
+                >
+                  <Text style={styles.chapterTitle}>{chapter.title}</Text>
+                </AnimatedTouchableOpacity>
+              );
+            })}
           </ScrollView>
         </>
       )}
 
-      <TouchableOpacity
+      <AnimatedTouchableOpacity
         style={[
           styles.continueButton,
           (!selectedBook || !selectedChapter) && styles.disabledButton,
+          { transform: [{ scale: scale.value }] }
         ]}
         onPress={handleContinue}
         disabled={!selectedBook || !selectedChapter}
       >
         <Text style={styles.continueButtonText}>Continue</Text>
-      </TouchableOpacity>
-    </View>
+      </AnimatedTouchableOpacity>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#0f0f1a',
+  },
+  header: {
     padding: 20,
-    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '700',
     marginBottom: 20,
     textAlign: 'center',
+    color: '#ffffff',
+    textShadowColor: 'rgba(0, 122, 255, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
   subtitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
     marginTop: 20,
-    marginBottom: 10,
+    marginBottom: 15,
+    marginLeft: 20,
+    color: '#a0a0c0',
   },
   booksContainer: {
     flex: 1,
+    padding: 20,
   },
   bookCard: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 10,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    backgroundColor: '#1a1a2e',
+    padding: 25,
+    borderRadius: 20,
+    marginBottom: 20,
+    shadowColor: '#007AFF',
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 12,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#2d2d4d',
   },
   selectedCard: {
     borderColor: '#007AFF',
     borderWidth: 2,
+    shadowColor: '#00aaff',
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
   },
   bookTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   chaptersContainer: {
     marginVertical: 10,
+    paddingLeft: 20,
   },
   chapterCard: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 10,
-    marginRight: 15,
-    minWidth: 200,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: '#1a1a2e',
+    padding: 20,
+    borderRadius: 16,
+    marginRight: 20,
+    minWidth: 220,
+    shadowColor: '#00aaff',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#2d2d4d',
   },
   chapterTitle: {
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#e0e0ff',
   },
   continueButton: {
     backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 10,
+    padding: 20,
+    borderRadius: 25,
     alignItems: 'center',
-    marginTop: 20,
+    margin: 20,
+    shadowColor: '#007AFF',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 15,
+    elevation: 8,
   },
   disabledButton: {
-    backgroundColor: '#ccc',
+    backgroundColor: '#2c2c4c',
+    shadowOpacity: 0.1,
   },
   continueButtonText: {
     color: 'white',
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
 });
