@@ -81,18 +81,17 @@ export async function sendUserAudio(
   profile: string
 ) {
   try {
+    // Create FormData and send base64 as form field
+    const formData = new FormData();
+    formData.append('audio_b64', audioBase64);
+    formData.append('session_id', sessionId);
+    formData.append('book', book);
+    formData.append('chapter', chapter);
+    formData.append('profile', profile);
+    
     const response = await fetch(`${API_BASE_URL}/roleplay/respond-audio`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        audio_b64: audioBase64,
-        session_id: sessionId,
-        book,
-        chapter,
-        profile,
-      }),
+      body: formData,
     });
 
     if (!response.ok) {
@@ -101,6 +100,7 @@ export async function sendUserAudio(
 
     return await response.json();
   } catch (error) {
+    console.error('Error in sendUserAudio:', error);
     if (error instanceof TypeError && error.message === 'Network request failed') {
       throw new Error('Unable to connect to the server. Please make sure the backend server is running and accessible from your device. Check that your mobile device is on the same network as your development machine.');
     }

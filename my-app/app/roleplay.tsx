@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../src/store';
 import { addTurn, setSessionId } from '../src/store/sessionSlice';
 import { openSession, sendUserAudio } from '../src/api';
-import { useAudioRecorder, useAudioPlayer, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';
+import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Audio } from 'expo-av';
 
 export default function RolePlayScreen() {
   const router = useRouter();
@@ -15,14 +16,13 @@ export default function RolePlayScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [initialBotMessage, setInitialBotMessage] = useState<string | null>(null);
-  const [currentAudioSource, setCurrentAudioSource] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const sessionId = useRef<string | null>(null);
+  const playerRef = useRef<Audio.Sound | null>(null);
+  const currentAudioSourceRef = useRef<string | null>(null);
 
   // Initialize audio recorder
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  
-  // Initialize audio player
-  const player = useAudioPlayer(currentAudioSource || '');
 
   useEffect(() => {
     // Set up audio mode and request permissions on component mount
@@ -52,20 +52,17 @@ export default function RolePlayScreen() {
       if (recorder.isRecording) {
         recorder.stop();
       }
-      if (player.playing) {
-        player.pause();
+      // Properly unload the audio player
+      if (playerRef.current) {
+        playerRef.current.unloadAsync();
+        playerRef.current = null;
+      }
+      // Delete temporary audio files
+      if (currentAudioSourceRef.current) {
+        FileSystem.deleteAsync(currentAudioSourceRef.current, { idempotent: true });
       }
     };
   }, []);
-
-  // Monitor player status
-  useEffect(() => {
-    if (player.playing) {
-      setIsPlaying(true);
-    } else {
-      setIsPlaying(false);
-    }
-  }, [player.playing]);
 
   const startNewSession = async () => {
     try {
@@ -78,11 +75,12 @@ export default function RolePlayScreen() {
       
       // Call the backend to open a new session
       if (book && chapter && profile) {
+        setIsLoading(true);
         const response = await openSession(book, chapter, profile, newSessionId);
         
         // Add bot's initial message to history
-        dispatch(addTurn({ role: 'bot', text: response.response_text }));
-        setInitialBotMessage(response.response_text);
+        dispatch(addTurn({ role: 'bot', text: response.text }));
+        setInitialBotMessage(response.text);
         
         // Play the initial audio
         if (response.audio_b64) {
@@ -92,6 +90,8 @@ export default function RolePlayScreen() {
     } catch (error) {
       console.error('Failed to start session:', error);
       Alert.alert('Error', 'Failed to start session. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -150,17 +150,38 @@ export default function RolePlayScreen() {
         encoding: FileSystem.EncodingType.Base64,
       });
       
-      // Set the audio source for the player
-      setCurrentAudioSource(fileName);
+      // Clean up previous audio file
+      if (currentAudioSourceRef.current) {
+        FileSystem.deleteAsync(currentAudioSourceRef.current, { idempotent: true });
+      }
       
-      // Wait a brief moment for the player to load the new source
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Store the new file path
+      currentAudioSourceRef.current = fileName;
+      
+      // Unload previous player if exists
+      if (playerRef.current) {
+        await playerRef.current.unloadAsync();
+        playerRef.current = null;
+      }
+      
+      // Create a new sound object
+      const { sound } = await Audio.Sound.createAsync({ uri: fileName });
+      playerRef.current = sound;
       
       // Play the audio
-      player.play();
+      await sound.playAsync();
+      
+      // Set up playback completion listener
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setIsPlaying(false);
+        } else if (status.isLoaded) {
+          setIsPlaying(status.isPlaying);
+        }
+      });
     } catch (error) {
-      console.error('Failed to play audio:', error);
-      Alert.alert('Error', 'Failed to play audio response.');
+      console.error('Failed to prepare audio:', error);
+      Alert.alert('Error', 'Failed to prepare audio response.');
     }
   };
 
@@ -184,7 +205,7 @@ export default function RolePlayScreen() {
           dispatch(addTurn({ role: 'user', text: '[Audio Message]' }));
           
           // Add bot's response to history
-          dispatch(addTurn({ role: 'bot', text: response.response_text }));
+          dispatch(addTurn({ role: 'bot', text: response.text }));
           
           // Play bot's response audio
           if (response.audio_b64) {
@@ -220,25 +241,32 @@ export default function RolePlayScreen() {
         Role: {profile}
       </Text>
       
-      <ScrollView style={styles.historyContainer}>
-        {history.map((turn, index) => (
-          <View
-            key={index}
-            style={[
-              styles.messageBubble,
-              turn.role === 'user' ? styles.userMessage : styles.botMessage,
-            ]}
-          >
-            <Text style={styles.messageText}>{turn.text}</Text>
-          </View>
-        ))}
-        
-        {initialBotMessage && history.length === 0 && (
-          <View style={[styles.messageBubble, styles.botMessage]}>
-            <Text style={styles.messageText}>{initialBotMessage}</Text>
-          </View>
-        )}
-      </ScrollView>
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Starting session...</Text>
+        </View>
+      ) : (
+        <ScrollView style={styles.historyContainer}>
+          {history.map((turn, index) => (
+            <View
+              key={index}
+              style={[
+                styles.messageBubble,
+                turn.role === 'user' ? styles.userMessage : styles.botMessage,
+              ]}
+            >
+              <Text style={styles.messageText}>{turn.text}</Text>
+            </View>
+          ))}
+          
+          {initialBotMessage && history.length === 0 && (
+            <View style={[styles.messageBubble, styles.botMessage]}>
+              <Text style={styles.messageText}>{initialBotMessage}</Text>
+            </View>
+          )}
+        </ScrollView>
+      )}
       
       <View style={styles.controlsContainer}>
         <TouchableOpacity
@@ -248,7 +276,7 @@ export default function RolePlayScreen() {
             isPlaying && styles.disabledButton,
           ]}
           onPress={handleRecordPress}
-          disabled={isPlaying}
+          disabled={isPlaying || isLoading}
         >
           <Text style={styles.recordButtonText}>
             {isRecording ? 'Stop Recording' : 'Start Recording'}
@@ -258,6 +286,7 @@ export default function RolePlayScreen() {
         <TouchableOpacity
           style={styles.endButton}
           onPress={handleEndSession}
+          disabled={isLoading}
         >
           <Text style={styles.endButtonText}>End Session</Text>
         </TouchableOpacity>
@@ -283,6 +312,16 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 20,
     textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
   },
   historyContainer: {
     flex: 1,
