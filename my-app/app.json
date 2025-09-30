@@ -25,7 +25,11 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "RECORD_AUDIO"
-      ]
+      ],
+      "statusBar": {
+        "barStyle": "dark-content",
+        "backgroundColor": "#ffffff"
+      }
     },
     "web": {
       "output": "static",

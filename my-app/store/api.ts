@@ -5,8 +5,14 @@
 // For development, we need to use the actual IP address for mobile devices
 const getApiBaseUrl = () => {
   // Check if we're in a React Native environment (mobile)
-  if (typeof navigator !== 'undefined' && navigator.product === 'ReactNative') {
+  // Use a more reliable way to detect React Native
+  if (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.includes('ReactNative')) {
     // Replace with your actual IP address
+    return 'http://192.168.1.137:8000';
+  }
+  
+  // Alternative check for React Native environment
+  if (typeof global !== 'undefined' && global.HermesInternal) {
     return 'http://192.168.1.137:8000';
   }
   

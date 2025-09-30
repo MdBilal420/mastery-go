@@ -5,12 +5,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useDispatch } from "react-redux";
-import { setSelections } from "../store/sessionSlice";
 import { Colors } from "../constants/theme";
 
 // Demo content
@@ -63,64 +61,35 @@ const BOOKS = [
   },
 ];
 
-const PROFILES = [
-  {
-    id: "manager",
-    title: "Manager",
-    description: "Practice as a manager giving feedback",
-    gradient: ["#ff9a9e", "#fecfef"] as const,
-  },
-  {
-    id: "teacher",
-    title: "Teacher",
-    description: "Practice as a teacher explaining concepts",
-    gradient: ["#a8edea", "#fed6e3"] as const,
-  },
-  {
-    id: "student",
-    title: "Student",
-    description: "Practice as a student asking questions",
-    gradient: ["#ffecd2", "#fcb69f"] as const,
-  },
-  {
-    id: "sales",
-    title: "Salesperson",
-    description: "Practice as a salesperson pitching ideas",
-    gradient: ["#d299c2", "#fef9d7"] as const,
-  },
-];
-
 export default function HomeScreen() {
   const router = useRouter();
-  const dispatch = useDispatch();
   const [selectedBook, setSelectedBook] = useState<string | null>(BOOKS[0].id);
-  const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
+  const [selectedChapter, setSelectedChapter] = useState<string | null>(null);
 
   const selectedBookData = BOOKS.find((book) => book.id === selectedBook);
 
   const handleContinue = () => {
-    if (selectedBook && selectedProfile) {
+    if (selectedBook && selectedChapter) {
       const book = BOOKS.find((b) => b.id === selectedBook);
-      const profile = PROFILES.find((p) => p.id === selectedProfile);
+      const chapter = book?.chapters.find((c) => c.id === selectedChapter);
 
-      if (book && profile) {
-        // For now, we'll use the first chapter as default
-        const chapter = book.chapters[0];
-
-        dispatch(
-          setSelections({
-            book: book.title,
-            chapter: chapter.title,
-            profile: profile.title,
-          })
-        );
-        router.push("./roleplay");
+      if (book && chapter) {
+        // Navigate to profile selection with book and chapter data
+        router.push({
+          pathname: "./profile-selection",
+          params: {
+            bookId: book.id,
+            bookTitle: book.title,
+            chapterId: chapter.id,
+            chapterTitle: chapter.title,
+          },
+        });
       }
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
@@ -183,43 +152,45 @@ export default function HomeScreen() {
           })}
         </ScrollView>
 
-        {/* Select Your Profile Section */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Select Your Profile</Text>
-          <Text style={styles.arrow}>→</Text>
-        </View>
+        {/* Select Your Lesson Section */}
+        {selectedBookData && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Select Your Lesson</Text>
+              <Text style={styles.arrow}>→</Text>
+            </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.horizontalScroll}
-          contentContainerStyle={styles.horizontalScrollContent}
-        >
-          {PROFILES.map((profile) => {
-            const isSelected = selectedProfile === profile.id;
-            return (
-              <TouchableOpacity
-                key={profile.id}
-                style={[
-                  styles.profileCard,
-                  isSelected && styles.selectedProfileCard,
-                ]}
-                onPress={() => setSelectedProfile(profile.id)}
-              >
-                <LinearGradient
-                  colors={profile.gradient}
-                  style={styles.profileAvatarPlaceholder}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                />
-                <Text style={styles.profileCardTitle}>{profile.title}</Text>
-                <Text style={styles.profileCardDescription}>
-                  {profile.description}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.horizontalScroll}
+              contentContainerStyle={styles.horizontalScrollContent}
+            >
+              {selectedBookData.chapters.map((chapter) => {
+                const isSelected = selectedChapter === chapter.id;
+                return (
+                  <TouchableOpacity
+                    key={chapter.id}
+                    style={[
+                      styles.chapterCard,
+                      isSelected && styles.selectedChapterCard,
+                    ]}
+                    onPress={() => setSelectedChapter(chapter.id)}
+                  >
+                    <View style={styles.chapterNumber}>
+                      <Text style={styles.chapterNumberText}>
+                        {selectedBookData.chapters.indexOf(chapter) + 1}
+                      </Text>
+                    </View>
+                    <Text style={styles.chapterCardTitle} numberOfLines={3}>
+                      {chapter.title}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </>
+        )}
 
         <View style={styles.spacer} />
       </ScrollView>
@@ -240,14 +211,16 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View> */}
 
-      {/* Continue Button - only shown when both book and profile are selected */}
-      {selectedBook && selectedProfile && (
-        <TouchableOpacity
-          style={styles.continueButton}
-          onPress={handleContinue}
-        >
-          <Text style={styles.continueButtonText}>Start Roleplay</Text>
-        </TouchableOpacity>
+      {/* Continue Button - only shown when both book and chapter are selected */}
+      {selectedBook && selectedChapter && (
+        <SafeAreaView edges={["bottom"]} style={styles.buttonContainer}>
+          <TouchableOpacity
+            style={styles.continueButton}
+            onPress={handleContinue}
+          >
+            <Text style={styles.continueButtonText}>Continue</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
       )}
     </SafeAreaView>
   );
@@ -298,7 +271,8 @@ const styles = StyleSheet.create({
   },
   featuredBookCard: {
     marginHorizontal: 20,
-    marginVertical: 10,
+    marginVertical: 20,
+    marginTop: 10,
     borderRadius: 20,
     overflow: "hidden",
     elevation: 5,
@@ -391,50 +365,56 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#999999",
   },
-  profileCard: {
-    width: 160,
+  chapterCard: {
+    width: 180,
     backgroundColor: "#f8f8f8",
     borderRadius: 16,
-    padding: 15,
+    padding: 20,
     marginRight: 15,
     elevation: 3,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
+    minHeight: 120,
   },
-  selectedProfileCard: {
+  selectedChapterCard: {
     borderColor: Colors.light.tint,
     borderWidth: 2,
   },
-  profileAvatarPlaceholder: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "#e0e0e0",
-    alignSelf: "center",
-    marginBottom: 10,
+  chapterNumber: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.light.tint,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 15,
   },
-  profileCardTitle: {
-    fontSize: 16,
+  chapterNumberText: {
+    color: "white",
+    fontSize: 18,
     fontWeight: "700",
-    color: "#333333",
-    textAlign: "center",
-    marginBottom: 5,
   },
-  profileCardDescription: {
-    fontSize: 12,
-    color: "#999999",
-    textAlign: "center",
+  chapterCardTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333333",
+    lineHeight: 22,
   },
   spacer: {
     height: 100, // Space for the bottom nav bar
   },
-  continueButton: {
+  buttonContainer: {
     position: "absolute",
-    bottom: 20,
-    left: 20,
-    right: 20,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "transparent",
+  },
+  continueButton: {
+    marginHorizontal: 20,
+    marginBottom: 20,
     backgroundColor: Colors.light.tint,
     padding: 18,
     borderRadius: 25,

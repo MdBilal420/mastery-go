@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store';
@@ -15,7 +16,7 @@ import Animated, {
   withSpring, 
   withTiming,
   interpolate,
-  Extrapolate
+  Extrapolation
 } from 'react-native-reanimated';
 
 export default function RolePlayScreen() {
@@ -44,6 +45,8 @@ export default function RolePlayScreen() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    
     // Set up audio mode and request permissions on component mount
     (async () => {
       try {
@@ -51,6 +54,7 @@ export default function RolePlayScreen() {
         const status = await AudioModule.requestRecordingPermissionsAsync();
         if (!status.granted) {
           Alert.alert('Permission Required', 'Please allow microphone access to record audio.');
+          return;
         }
         
         // Set audio mode
@@ -58,33 +62,39 @@ export default function RolePlayScreen() {
           playsInSilentMode: true,
           allowsRecording: true,
         });
+        
+        // Start animation loop for recording button pulse
+        interval = setInterval(() => {
+          pulse.value = withTiming(pulse.value === 0 ? 1 : 0, { duration: 1000 });
+        }, 1000);
+        
+        // Start a new session
+        startNewSession();
       } catch (error) {
         console.error('Failed to set up audio permissions:', error);
       }
     })();
     
-    // Start animation loop for recording button pulse
-    const interval = setInterval(() => {
-      pulse.value = withTiming(pulse.value === 0 ? 1 : 0, { duration: 1000 });
-    }, 1000);
-    
-    // Start a new session
-    startNewSession();
-    
     // Cleanup function
     return () => {
-      clearInterval(interval);
-      if (recorder.isRecording) {
-        recorder.stop();
+      if (interval) {
+        clearInterval(interval);
       }
+      
+      // Stop recording if in progress
+      if (recorder && recorder.isRecording) {
+        recorder.stop().catch(console.error);
+      }
+      
       // Properly unload the audio player
       if (playerRef.current) {
-        playerRef.current.unloadAsync();
+        playerRef.current.unloadAsync().catch(console.error);
         playerRef.current = null;
       }
+      
       // Delete temporary audio files
       if (currentAudioSourceRef.current) {
-        FileSystem.deleteAsync(currentAudioSourceRef.current, { idempotent: true });
+        FileSystem.deleteAsync(currentAudioSourceRef.current, { idempotent: true }).catch(console.error);
       }
     };
   }, []);
@@ -148,9 +158,15 @@ export default function RolePlayScreen() {
         return;
       }
 
+      // Check if recorder is available
+      if (!recorder) {
+        Alert.alert('Error', 'Audio recorder not available.');
+        return;
+      }
+
       // Prepare and start recording
       await recorder.prepareToRecordAsync();
-      await recorder.record();
+      recorder.record(); // Remove await as it doesn't return a promise
       setIsRecording(true);
     } catch (error) {
       console.error('Failed to start recording:', error);
@@ -161,6 +177,10 @@ export default function RolePlayScreen() {
 
   const stopRecording = async () => {
     try {
+      if (!recorder) {
+        throw new Error('Recorder not available');
+      }
+      
       await recorder.stop();
       setIsRecording(false);
       
@@ -300,9 +320,13 @@ export default function RolePlayScreen() {
     }
     
     // Stop recording if in progress
-    if (isRecording) {
-      await recorder.stop();
-      setIsRecording(false);
+    if (isRecording && recorder) {
+      try {
+        await recorder.stop();
+        setIsRecording(false);
+      } catch (error) {
+        console.error('Error stopping recording:', error);
+      }
     }
     
     router.push('./feedback');
@@ -323,9 +347,9 @@ export default function RolePlayScreen() {
   // Animated styles
   const pulseStyle = useAnimatedStyle(() => {
     return {
-      shadowOpacity: interpolate(pulse.value, [0, 1], [0.4, 0.7], Extrapolate.CLAMP),
+      shadowOpacity: interpolate(pulse.value, [0, 1], [0.4, 0.7], Extrapolation.CLAMP),
       transform: [
-        { scale: interpolate(pulse.value, [0, 1], [1, 1.05], Extrapolate.CLAMP) }
+        { scale: interpolate(pulse.value, [0, 1], [1, 1.05], Extrapolation.CLAMP) }
       ]
     };
   });
@@ -344,7 +368,7 @@ export default function RolePlayScreen() {
   });
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header bar with back button, title, and end session button */}
       <View style={styles.headerBar}>
         <View style={styles.headerTitleContainer}>
@@ -370,7 +394,7 @@ export default function RolePlayScreen() {
           contentContainerStyle={styles.historyContent}
           onScroll={({ nativeEvent }) => handleScroll(nativeEvent)}
           scrollEventThrottle={16} // Increased frequency for smoother tracking
-          onContentSizeChange={(width, height) => {
+          onContentSizeChange={(_, height) => {
             // Track content height changes
             const previousHeight = contentHeightRef.current;
             contentHeightRef.current = height;
@@ -419,24 +443,28 @@ export default function RolePlayScreen() {
       )}
       
       {/* Record button moved to bottom */}
-      {isLoading ? null :<AnimatedTouchableOpacity
-        style={[
-          styles.recordButton,
-          isPlaying && styles.playingButton,
-          isRecording && styles.recordingButton,
-          recordButtonStyle
-        ]}
-        onPress={handleRecordPress}
-        activeOpacity={0.8}
-      >
-        <Animated.View style={pulseStyle}>
-          <Ionicons 
-            name={isPlaying ? "volume-high" : isRecording ? "square" : "mic"} 
-            size={32} 
-            color="#FFFFFF" 
-          />
-        </Animated.View>
-      </AnimatedTouchableOpacity>}
+      {!isLoading && (
+        <SafeAreaView edges={['bottom']} style={styles.recordButtonContainer}>
+          <AnimatedTouchableOpacity
+            style={[
+              styles.recordButton,
+              isPlaying && styles.playingButton,
+              isRecording && styles.recordingButton,
+              recordButtonStyle
+            ]}
+            onPress={handleRecordPress}
+            activeOpacity={0.8}
+          >
+            <Animated.View style={pulseStyle}>
+              <Ionicons 
+                name={isPlaying ? "volume-high" : isRecording ? "square" : "mic"} 
+                size={32} 
+                color="#FFFFFF" 
+              />
+            </Animated.View>
+          </AnimatedTouchableOpacity>
+        </SafeAreaView>
+      )}
       
       {/* Processing indicator */}
       {isProcessing && (
@@ -460,6 +488,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 15,
+    paddingTop: 10,
     backgroundColor: '#ffffff',
     elevation: 3,
     shadowColor: '#000',
@@ -570,10 +599,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'right',
   },
-  recordButton: {
+  recordButtonContainer: {
     position: 'absolute',
-    bottom: 30, // Positioned at bottom
-    alignSelf: 'center',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  recordButton: {
+    marginBottom: 30,
     width: 70,
     height: 70,
     borderRadius: 35,

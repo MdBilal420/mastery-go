@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store';
@@ -20,7 +21,11 @@ export default function FeedbackScreen() {
   }, []);
 
   const fetchFeedback = async () => {
-    if (!sessionId) return;
+    if (!sessionId || !history || history.length === 0) {
+      console.log('No session ID or history available for feedback');
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     try {
@@ -28,6 +33,8 @@ export default function FeedbackScreen() {
       setFeedback(response);
     } catch (error) {
       console.error('Failed to get feedback:', error);
+      // Set a default error state so user isn't stuck loading
+      setFeedback(null);
     } finally {
       setLoading(false);
     }
@@ -40,7 +47,7 @@ export default function FeedbackScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007AFF" />
           <Text style={styles.loadingText}>Generating personalized feedback...</Text>
@@ -50,7 +57,7 @@ export default function FeedbackScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <ThemedText type="title" style={styles.title}>Session Feedback</ThemedText>
         <ThemedText type="subtitle" style={styles.subtitle}>
@@ -92,12 +99,14 @@ export default function FeedbackScreen() {
         </View>
       )}
       
-      <TouchableOpacity
-        style={styles.newSessionButton}
-        onPress={handleNewSession}
-      >
-        <Text style={styles.newSessionButtonText}>Start New Session</Text>
-      </TouchableOpacity>
+      <SafeAreaView edges={['bottom']} style={styles.buttonContainer}>
+        <TouchableOpacity
+          style={styles.newSessionButton}
+          onPress={handleNewSession}
+        >
+          <Text style={styles.newSessionButtonText}>Start New Session</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
     </SafeAreaView>
   );
 }
@@ -109,11 +118,11 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 20,
+    paddingTop: 10,
     alignItems: 'center',
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
-    marginTop: 10,
   },
   title: {
     fontSize: 28,
@@ -211,6 +220,9 @@ const styles = StyleSheet.create({
   noFeedbackText: {
     fontSize: 18,
     color: '#666',
+  },
+  buttonContainer: {
+    backgroundColor: 'transparent',
   },
   newSessionButton: {
     backgroundColor: '#007AFF',
