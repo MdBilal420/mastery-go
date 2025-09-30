@@ -6,25 +6,34 @@
 const getApiBaseUrl = () => {
   // Check if we're in a React Native environment (mobile)
   // Use a more reliable way to detect React Native
-  if (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.includes('ReactNative')) {
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.userAgent &&
+    navigator.userAgent.includes("ReactNative")
+  ) {
     // Replace with your actual IP address
-    return 'http://192.168.1.137:8000';
+    return "http://192.168.1.137:8000";
   }
-  
-  // Alternative check for React Native environment
-  if (typeof global !== 'undefined' && global.HermesInternal) {
-    return 'http://192.168.1.137:8000';
+
+  // Alternative check for React Native environment using Hermes
+  if (typeof global !== "undefined" && (global as any).HermesInternal) {
+    return "http://192.168.1.137:8000";
   }
-  
+
+  // Check for React Native using __DEV__ flag
+  if (typeof global !== "undefined" && (global as any).__DEV__ !== undefined) {
+    return "http://192.168.1.137:8000";
+  }
+
   // For web, we can use localhost
-  if (typeof window !== 'undefined') {
-    return window.location.hostname === 'localhost' 
-      ? 'http://localhost:8000' 
+  if (typeof window !== "undefined") {
+    return window.location.hostname === "localhost"
+      ? "http://localhost:8000"
       : `http://${window.location.hostname}:8000`;
   }
-  
+
   // Default fallback
-  return 'http://localhost:8000';
+  return "http://localhost:8000";
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -45,9 +54,9 @@ export async function openSession(
 ) {
   try {
     const response = await fetch(`${API_BASE_URL}/roleplay/open`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         book,
@@ -63,8 +72,13 @@ export async function openSession(
 
     return await response.json();
   } catch (error) {
-    if (error instanceof TypeError && error.message === 'Network request failed') {
-      throw new Error('Unable to connect to the server. Please make sure the backend server is running and accessible from your device. Check that your mobile device is on the same network as your development machine.');
+    if (
+      error instanceof TypeError &&
+      error.message === "Network request failed"
+    ) {
+      throw new Error(
+        "Unable to connect to the server. Please make sure the backend server is running and accessible from your device. Check that your mobile device is on the same network as your development machine."
+      );
     }
     throw error;
   }
@@ -89,14 +103,14 @@ export async function sendUserAudio(
   try {
     // Create FormData and send base64 as form field
     const formData = new FormData();
-    formData.append('audio_b64', audioBase64);
-    formData.append('session_id', sessionId);
-    formData.append('book', book);
-    formData.append('chapter', chapter);
-    formData.append('profile', profile);
-    
+    formData.append("audio_b64", audioBase64);
+    formData.append("session_id", sessionId);
+    formData.append("book", book);
+    formData.append("chapter", chapter);
+    formData.append("profile", profile);
+
     const response = await fetch(`${API_BASE_URL}/roleplay/respond-audio`, {
-      method: 'POST',
+      method: "POST",
       body: formData,
     });
 
@@ -106,9 +120,14 @@ export async function sendUserAudio(
 
     return await response.json();
   } catch (error) {
-    console.error('Error in sendUserAudio:', error);
-    if (error instanceof TypeError && error.message === 'Network request failed') {
-      throw new Error('Unable to connect to the server. Please make sure the backend server is running and accessible from your device. Check that your mobile device is on the same network as your development machine.');
+    console.error("Error in sendUserAudio:", error);
+    if (
+      error instanceof TypeError &&
+      error.message === "Network request failed"
+    ) {
+      throw new Error(
+        "Unable to connect to the server. Please make sure the backend server is running and accessible from your device. Check that your mobile device is on the same network as your development machine."
+      );
     }
     throw error;
   }
@@ -120,12 +139,15 @@ export async function sendUserAudio(
  * @param sessionId The session ID
  * @returns Promise with feedback summary, scores, and suggestions
  */
-export async function getFeedback(history: { role: string; text: string }[], sessionId: string) {
+export async function getFeedback(
+  history: { role: string; text: string }[],
+  sessionId: string
+) {
   try {
     const response = await fetch(`${API_BASE_URL}/roleplay/feedback`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         history,
@@ -139,8 +161,13 @@ export async function getFeedback(history: { role: string; text: string }[], ses
 
     return await response.json();
   } catch (error) {
-    if (error instanceof TypeError && error.message === 'Network request failed') {
-      throw new Error('Unable to connect to the server. Please make sure the backend server is running and accessible from your device. Check that your mobile device is on the same network as your development machine.');
+    if (
+      error instanceof TypeError &&
+      error.message === "Network request failed"
+    ) {
+      throw new Error(
+        "Unable to connect to the server. Please make sure the backend server is running and accessible from your device. Check that your mobile device is on the same network as your development machine."
+      );
     }
     throw error;
   }
