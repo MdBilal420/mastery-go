@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useDispatch, useSelector } from 'react-redux';
-import { RootState } from '../src/store';
-import { setSelections } from '../src/store/sessionSlice';
+import { RootState } from '../store';
+import { setSelections } from '../store/sessionSlice';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 

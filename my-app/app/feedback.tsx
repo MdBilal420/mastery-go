@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useDispatch, useSelector } from 'react-redux';
-import { RootState } from '../src/store';
-import { resetSession } from '../src/store/sessionSlice';
-import { getFeedback } from '../src/api';
+import { RootState } from '../store';
+import { resetSession } from '../store/sessionSlice';
+import { getFeedback } from '../store/api';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 

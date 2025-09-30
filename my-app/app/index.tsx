@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useDispatch } from 'react-redux';
-import { setSelections } from '../src/store/sessionSlice';
+import { setSelections } from '../store/sessionSlice';
 import { Colors } from '../constants/theme';
 
 // Demo content
