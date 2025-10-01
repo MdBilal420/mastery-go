@@ -15,8 +15,15 @@ import {
   Platform,
 } from "react-native";
 import { TextInput } from "react-native";
+import { useSelector } from "react-redux";
+import { RootState } from "../store";
 
 const RolePlayAIScreen = () => {
+  // Get selections from Redux store
+  const { book, chapter, profile } = useSelector(
+    (state: RootState) => state.session
+  );
+
   const conversation = useConversation({
     clientTools: {},
     onConnect: ({ conversationId }: { conversationId: string }) => {
@@ -72,8 +79,21 @@ const RolePlayAIScreen = () => {
         agentId: "agent_9301k6ewwsp4etk8vdsffcgr840v",
         dynamicVariables: {
           platform: Platform.OS,
+          book: book || "Unknown Book",
+          chapter: chapter || "Unknown Chapter",
+          profile: profile || "Unknown Profile",
         },
       });
+
+      // Send initial context message to the AI
+      if (book && chapter && profile) {
+        const contextMessage = `We are doing a roleplay exercise based on the book "${book}", specifically focusing on the chapter "${chapter}". I am playing the role of a ${profile}. Please start our roleplay conversation based on this context and help me practice the concepts from this chapter.`;
+
+        // Wait a moment for the session to fully establish, then send context
+        setTimeout(() => {
+          conversation.sendContextualUpdate(contextMessage);
+        }, 1000);
+      }
     } catch (error) {
       console.error("Failed to start conversation:", error);
     } finally {
@@ -112,9 +132,20 @@ const RolePlayAIScreen = () => {
   return (
     <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
       <View style={styles.container}>
-        <Text style={styles.title}>ElevenLabs React Native Example</Text>
+        <Text style={styles.title}>AI Roleplay Session</Text>
+
+        {/* Display current selections */}
+        {book && chapter && profile && (
+          <View style={styles.contextContainer}>
+            <Text style={styles.contextTitle}>Current Session:</Text>
+            <Text style={styles.contextText}>📚 Book: {book}</Text>
+            <Text style={styles.contextText}>📖 Chapter: {chapter}</Text>
+            <Text style={styles.contextText}>👤 Your Role: {profile}</Text>
+          </View>
+        )}
+
         <Text style={styles.subtitle}>
-          Remember to set the agentId in the .env file!
+          Start your AI conversation based on your selected context
         </Text>
 
         <View style={styles.statusContainer}>
@@ -269,6 +300,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#6B7280",
     marginBottom: 32,
+    textAlign: "center",
+  },
+  contextContainer: {
+    backgroundColor: "#E0F2FE",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+    width: "100%",
+    borderLeftWidth: 4,
+    borderLeftColor: "#0EA5E9",
+  },
+  contextTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#0F172A",
+    marginBottom: 8,
+  },
+  contextText: {
+    fontSize: 14,
+    color: "#334155",
+    marginBottom: 4,
   },
   statusContainer: {
     flexDirection: "row",
@@ -418,6 +470,5 @@ const styles = StyleSheet.create({
     backgroundColor: "#F59E0B",
   },
 });
-
 
 export default RolePlayAIScreen;
