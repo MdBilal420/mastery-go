@@ -23,7 +23,9 @@ const BOOKS = [
     chapters: [
       { id: "chapter-1", title: "Fundamental Techniques in Handling People" },
       { id: "chapter-2", title: "Ways to Make People Like You" },
-    ],
+      { id : "chapter-3", title :  "How to Win People to Your Way of Thinking" },
+      { id : "chapter-4", title :  "BE A LEADER: How to change people without giving offence or arousing resentment" }
+      ],
   },
   {
     id: "the-lean-startup",
@@ -35,28 +37,8 @@ const BOOKS = [
     chapters: [
       { id: "chapter-1", title: "Vision" },
       { id: "chapter-2", title: "Steer" },
-    ],
-  },
-  {
-    id: "atomic-habits",
-    title: "Atomic Habits",
-    author: "James Clear",
-    description: "Proven way to build good habits and break bad ones",
-    gradient: ["#4facfe", "#00f2fe"] as const,
-    chapters: [
-      { id: "chapter-1", title: "The Surprising Power of Atomic Habits" },
-      { id: "chapter-2", title: "How Your Habits Shape Your Identity" },
-    ],
-  },
-  {
-    id: "deep-work",
-    title: "Deep Work",
-    author: "Cal Newport",
-    description: "Rules for focused success in a distracted world",
-    gradient: ["#43e97b", "#38f9d7"] as const,
-    chapters: [
-      { id: "chapter-1", title: "Deep Work is Valuable" },
-      { id: "chapter-2", title: "Deep Work is Rare" },
+      { id: "chapter-3", title: "Accelerate" },
+
     ],
   },
 ];
