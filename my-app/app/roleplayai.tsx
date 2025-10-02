@@ -1,24 +1,26 @@
 import { useConversation } from "@elevenlabs/react-native";
-import type {
-  ConversationStatus,
-  ConversationEvent,
-  Role,
-} from "@elevenlabs/react-native";
-import React, { useState } from "react";
+import type { ConversationStatus } from "@elevenlabs/react-native";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Keyboard,
-  TouchableWithoutFeedback,
   Platform,
+  Alert,
+  PermissionsAndroid,
 } from "react-native";
-import { TextInput } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
 import { useSelector } from "react-redux";
 import { RootState } from "../store";
+import { Colors } from "../constants/theme";
+import { Ionicons } from "@expo/vector-icons";
 
 const RolePlayAIScreen = () => {
+  const router = useRouter();
+
   // Get selections from Redux store
   const { book, chapter, profile } = useSelector(
     (state: RootState) => state.session
@@ -26,76 +28,97 @@ const RolePlayAIScreen = () => {
 
   const conversation = useConversation({
     clientTools: {},
-    onConnect: ({ conversationId }: { conversationId: string }) => {
-      console.log("✅ Connected to conversation", conversationId);
-    },
-    onDisconnect: (details: string) => {
-      console.log("❌ Disconnected from conversation", details);
-    },
-    onError: (message: string, context?: Record<string, unknown>) => {
-      console.error("❌ Conversation error:", message, context);
-    },
-    onMessage: ({
-      message,
-      source,
-    }: {
-      message: ConversationEvent;
-      source: Role;
-    }) => {
-      console.log(`💬 Message from ${source}:`, message);
+    onError: (message: string) => {
+      Alert.alert(
+        "Voice Error",
+        `Error: ${message}. Please check microphone permissions and try again.`,
+        [{ text: "OK" }]
+      );
     },
     onModeChange: ({ mode }: { mode: "speaking" | "listening" }) => {
-      console.log(`🔊 Mode: ${mode}`);
-    },
-    onStatusChange: ({ status }: { status: ConversationStatus }) => {
-      console.log(`📡 Status: ${status}`);
-    },
-    onCanSendFeedbackChange: ({
-      canSendFeedback,
-    }: {
-      canSendFeedback: boolean;
-    }) => {
-      console.log(`🔊 Can send feedback: ${canSendFeedback}`);
+      setConversationMode(mode);
     },
   });
 
   const [isStarting, setIsStarting] = useState(false);
-  const [textInput, setTextInput] = useState("");
+  const [conversationMode, setConversationMode] = useState<
+    "speaking" | "listening" | null
+  >(null);
+  const [hasPermissions, setHasPermissions] = useState(false);
 
-  const handleSubmitText = () => {
-    if (textInput.trim()) {
-      conversation.sendUserMessage(textInput.trim());
-      setTextInput("");
-      Keyboard.dismiss();
-    }
-  };
+  useEffect(() => {
+    const requestPermissions = async () => {
+      try {
+        if (Platform.OS === "android") {
+          const hasPermission = await PermissionsAndroid.check(
+            PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+          );
+
+          if (hasPermission) {
+            setHasPermissions(true);
+            return;
+          }
+
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+            {
+              title: "Microphone Permission",
+              message:
+                "This app needs access to your microphone for voice conversations.",
+              buttonNeutral: "Ask Me Later",
+              buttonNegative: "Cancel",
+              buttonPositive: "OK",
+            }
+          );
+
+          setHasPermissions(granted === PermissionsAndroid.RESULTS.GRANTED);
+        } else {
+          setHasPermissions(true);
+        }
+      } catch (err) {
+        setHasPermissions(false);
+      }
+    };
+
+    requestPermissions();
+  }, []);
 
   const startConversation = async () => {
-    if (isStarting) return;
+    if (isStarting || !hasPermissions) {
+      if (!hasPermissions) {
+        Alert.alert(
+          "Microphone Permission Required",
+          "Please enable microphone access in your device settings to use voice features.",
+          [{ text: "OK" }]
+        );
+      }
+      return;
+    }
 
     setIsStarting(true);
     try {
       await conversation.startSession({
-        agentId: "agent_9301k6ewwsp4etk8vdsffcgr840v",
+        agentId: "agent_0301k6hyrs35fwht1cr2p9t00qzz",
         dynamicVariables: {
-          platform: Platform.OS,
           book: book || "Unknown Book",
           chapter: chapter || "Unknown Chapter",
           profile: profile || "Unknown Profile",
         },
       });
 
-      // Send initial context message to the AI
       if (book && chapter && profile) {
         const contextMessage = `We are doing a roleplay exercise based on the book "${book}", specifically focusing on the chapter "${chapter}". I am playing the role of a ${profile}. Please start our roleplay conversation based on this context and help me practice the concepts from this chapter.`;
 
-        // Wait a moment for the session to fully establish, then send context
         setTimeout(() => {
           conversation.sendContextualUpdate(contextMessage);
         }, 1000);
       }
     } catch (error) {
-      console.error("Failed to start conversation:", error);
+      Alert.alert(
+        "Connection Error",
+        "Failed to start the conversation. Please check your internet connection and try again.",
+        [{ text: "OK" }]
+      );
     } finally {
       setIsStarting(false);
     }
@@ -105,8 +128,16 @@ const RolePlayAIScreen = () => {
     try {
       await conversation.endSession();
     } catch (error) {
-      console.error("Failed to end conversation:", error);
+      // Silent fail
     }
+  };
+
+  const handleBack = () => {
+    // End conversation if active before navigating back
+    if (conversation.status === "connected") {
+      endConversation();
+    }
+    router.back();
   };
 
   const getStatusColor = (status: ConversationStatus): string => {
@@ -130,60 +161,116 @@ const RolePlayAIScreen = () => {
   const canEnd = conversation.status === "connected";
 
   return (
-    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-      <View style={styles.container}>
-        <Text style={styles.title}>AI Roleplay Session</Text>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      <View style={styles.innerContainer}>
+        {/* Navigation Header */}
+        <View style={styles.navigationHeader}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <Ionicons name="arrow-back" size={24} color={Colors.light.tint} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.endConversationButton,
+              !canEnd && styles.disabledHeaderButton,
+            ]}
+            onPress={endConversation}
+            disabled={!canEnd}
+          >
+            <Ionicons
+              name="stop-circle"
+              size={20}
+              color={canEnd ? "#FF3B30" : "#cccccc"}
+            />
+            <Text
+              style={[
+                styles.endConversationButtonText,
+                !canEnd && styles.disabledButtonText,
+              ]}
+            >
+              End
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Display current selections */}
         {book && chapter && profile && (
           <View style={styles.contextContainer}>
-            <Text style={styles.contextTitle}>Current Session:</Text>
-            <Text style={styles.contextText}>📚 Book: {book}</Text>
-            <Text style={styles.contextText}>📖 Chapter: {chapter}</Text>
-            <Text style={styles.contextText}>👤 Your Role: {profile}</Text>
+            <View style={styles.contextHeader}>
+              <Ionicons name="book" size={20} color={Colors.light.tint} />
+              <Text style={styles.contextTitle}>Current Session</Text>
+            </View>
+            <View style={styles.contextItem}>
+              <Ionicons name="library" size={16} color="#666666" />
+              <Text style={styles.contextText}>Book: {book}</Text>
+            </View>
+            <View style={styles.contextItem}>
+              <Ionicons name="document-text" size={16} color="#666666" />
+              <Text style={styles.contextText}>Chapter: {chapter}</Text>
+            </View>
+            <View style={styles.contextItem}>
+              <Ionicons name="person" size={16} color="#666666" />
+              <Text style={styles.contextText}>Your Role: {profile}</Text>
+            </View>
           </View>
         )}
 
-        <Text style={styles.subtitle}>
-          Start your AI conversation based on your selected context
-        </Text>
-
-        <View style={styles.statusContainer}>
-          <View
-            style={[
-              styles.statusDot,
-              { backgroundColor: getStatusColor(conversation.status) },
-            ]}
-          />
-          <Text style={styles.statusText}>
-            {getStatusText(conversation.status)}
-          </Text>
-        </View>
-
-        {/* Speaking Indicator */}
+        {/* Status Section */}
         {conversation.status === "connected" && (
-          <View style={styles.speakingContainer}>
-            <View
-              style={[
-                styles.speakingDot,
-                {
-                  backgroundColor: conversation.isSpeaking
+          <View style={styles.statusSection}>
+            <View style={styles.statusContainer}>
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: getStatusColor(conversation.status) },
+                ]}
+              />
+              <Text style={styles.statusText}>
+                {getStatusText(conversation.status)}
+              </Text>
+            </View>
+
+            <View style={styles.speakingContainer}>
+              <Ionicons
+                name={
+                  conversationMode === "speaking"
+                    ? "volume-high"
+                    : conversationMode === "listening"
+                    ? "mic"
+                    : "ear"
+                }
+                size={16}
+                color={
+                  conversationMode === "speaking"
                     ? "#8B5CF6"
-                    : "#D1D5DB",
-                },
-              ]}
-            />
-            <Text
-              style={[
-                styles.speakingText,
-                { color: conversation.isSpeaking ? "#8B5CF6" : "#9CA3AF" },
-              ]}
-            >
-              {conversation.isSpeaking ? "🎤 AI Speaking" : "👂 AI Listening"}
-            </Text>
+                    : conversationMode === "listening"
+                    ? "#10B981"
+                    : "#666666"
+                }
+              />
+              <Text
+                style={[
+                  styles.speakingText,
+                  {
+                    color:
+                      conversationMode === "speaking"
+                        ? "#8B5CF6"
+                        : conversationMode === "listening"
+                        ? "#10B981"
+                        : "#666666",
+                  },
+                ]}
+              >
+                {conversationMode === "speaking"
+                  ? "AI Speaking"
+                  : conversationMode === "listening"
+                  ? "Listening"
+                  : "Ready"}
+              </Text>
+            </View>
           </View>
         )}
 
+        {/* Main Action Button */}
         <View style={styles.buttonContainer}>
           <TouchableOpacity
             style={[
@@ -194,280 +281,208 @@ const RolePlayAIScreen = () => {
             onPress={startConversation}
             disabled={!canStart}
           >
-            <Text style={styles.buttonText}>
-              {isStarting ? "Starting..." : "Start Conversation"}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.button,
-              styles.endButton,
-              !canEnd && styles.disabledButton,
-            ]}
-            onPress={endConversation}
-            disabled={!canEnd}
-          >
-            <Text style={styles.buttonText}>End Conversation</Text>
+            <LinearGradient
+              colors={
+                canStart ? ["#667eea", "#764ba2"] : ["#cccccc", "#999999"]
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.gradientButton}
+            >
+              <Ionicons
+                name={isStarting ? "hourglass" : "play-circle"}
+                size={24}
+                color="white"
+                style={styles.buttonIcon}
+              />
+              <Text style={styles.heroButtonText}>
+                {isStarting ? "Starting..." : "Start AI Roleplay"}
+              </Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
-
-        {/* Feedback Buttons */}
-        {conversation.status === "connected" &&
-          conversation.canSendFeedback && (
-            <View style={styles.feedbackContainer}>
-              <Text style={styles.feedbackLabel}>How was that response?</Text>
-              <View style={styles.feedbackButtons}>
-                <TouchableOpacity
-                  style={[styles.button, styles.likeButton]}
-                  onPress={() => conversation.sendFeedback(true)}
-                >
-                  <Text style={styles.buttonText}>👍 Like</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.button, styles.dislikeButton]}
-                  onPress={() => conversation.sendFeedback(false)}
-                >
-                  <Text style={styles.buttonText}>👎 Dislike</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-        {/* Text Input and Messaging */}
-        {conversation.status === "connected" && (
-          <View style={styles.messagingContainer}>
-            <Text style={styles.messagingLabel}>Send Text Message</Text>
-            <TextInput
-              style={styles.textInput}
-              value={textInput}
-              onChangeText={(text) => {
-                setTextInput(text);
-                // Prevent agent from interrupting while user is typing
-                if (text.length > 0) {
-                  conversation.sendUserActivity();
-                }
-              }}
-              placeholder="Type your message or context... (Press Enter to send)"
-              multiline
-              onSubmitEditing={handleSubmitText}
-              returnKeyType="send"
-            />
-            <View style={styles.messageButtons}>
-              <TouchableOpacity
-                style={[styles.button, styles.messageButton]}
-                onPress={handleSubmitText}
-                disabled={!textInput.trim()}
-              >
-                <Text style={styles.buttonText}>💬 Send Message</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, styles.contextButton]}
-                onPress={() => {
-                  if (textInput.trim()) {
-                    conversation.sendContextualUpdate(textInput.trim());
-                    setTextInput("");
-                    Keyboard.dismiss();
-                  }
-                }}
-                disabled={!textInput.trim()}
-              >
-                <Text style={styles.buttonText}>📝 Send Context</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
       </View>
-    </TouchableWithoutFeedback>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#ffffff",
+  },
+  innerContainer: {
+    flex: 1,
     padding: 20,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 8,
-    color: "#1F2937",
+  navigationHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+    paddingHorizontal: 4,
   },
-  subtitle: {
-    fontSize: 16,
-    color: "#6B7280",
-    marginBottom: 32,
-    textAlign: "center",
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#f8f8f8",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
+  endConversationButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: "#f8f8f8",
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  disabledHeaderButton: {
+    backgroundColor: "#f0f0f0",
+    shadowOpacity: 0.05,
+  },
+  endConversationButtonText: {
+    marginLeft: 6,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FF3B30",
+  },
+  disabledButtonText: {
+    color: "#cccccc",
+  },
+
   contextContainer: {
-    backgroundColor: "#E0F2FE",
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
-    width: "100%",
-    borderLeftWidth: 4,
-    borderLeftColor: "#0EA5E9",
+    backgroundColor: "#f8f8f8",
+    padding: 20,
+    borderRadius: 20,
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: Colors.light.tint,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  contextHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
   },
   contextTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#0F172A",
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#333333",
+    marginLeft: 8,
+  },
+  contextItem: {
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 8,
   },
   contextText: {
-    fontSize: 14,
-    color: "#334155",
-    marginBottom: 4,
+    fontSize: 16,
+    color: "#666666",
+    marginLeft: 12,
+    flex: 1,
+  },
+  statusSection: {
+    backgroundColor: "#f8f8f8",
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
   },
   statusContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 24,
+    marginBottom: 12,
   },
   statusDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    marginRight: 8,
+    marginRight: 12,
   },
   statusText: {
     fontSize: 16,
-    fontWeight: "500",
-    color: "#374151",
+    fontWeight: "600",
+    color: "#333333",
   },
   speakingContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 24,
-  },
-  speakingDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 8,
   },
   speakingText: {
     fontSize: 14,
     fontWeight: "500",
-  },
-  toolsContainer: {
-    backgroundColor: "#E5E7EB",
-    padding: 16,
-    borderRadius: 8,
-    marginBottom: 24,
-    width: "100%",
-  },
-  toolsTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 8,
-  },
-  toolItem: {
-    fontSize: 12,
-    color: "#6B7280",
-    fontFamily: "monospace",
-    marginBottom: 4,
+    marginLeft: 8,
   },
   buttonContainer: {
-    width: "100%",
     gap: 16,
+    marginBottom: 24,
   },
   button: {
-    backgroundColor: "#3B82F6",
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 8,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 18,
+    paddingHorizontal: 24,
+    borderRadius: 25,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  buttonIcon: {
+    marginRight: 8,
   },
   startButton: {
-    backgroundColor: "#10B981",
+    backgroundColor: "transparent",
+    shadowColor: "#667eea",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    minHeight: 64,
   },
-  endButton: {
-    backgroundColor: "#EF4444",
+  gradientButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 20,
+    paddingHorizontal: 32,
+    borderRadius: 25,
+    minHeight: 64,
+  },
+  heroButtonText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
   disabledButton: {
-    backgroundColor: "#9CA3AF",
-  },
-  buttonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  instructions: {
-    marginTop: 24,
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  feedbackContainer: {
-    marginTop: 24,
-    alignItems: "center",
-  },
-  feedbackLabel: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#374151",
-    marginBottom: 12,
-  },
-  feedbackButtons: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  likeButton: {
-    backgroundColor: "#10B981",
-  },
-  dislikeButton: {
-    backgroundColor: "#EF4444",
-  },
-  messagingContainer: {
-    marginTop: 24,
-    width: "100%",
-  },
-  messagingLabel: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#374151",
-    marginBottom: 8,
-  },
-  textInput: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    padding: 16,
-    minHeight: 100,
-    textAlignVertical: "top",
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    marginBottom: 16,
-  },
-  messageButtons: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  messageButton: {
-    backgroundColor: "#3B82F6",
-    flex: 1,
-  },
-  contextButton: {
-    backgroundColor: "#4F46E5",
-    flex: 1,
-  },
-  activityContainer: {
-    marginTop: 24,
-    alignItems: "center",
-  },
-  activityLabel: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  activityButton: {
-    backgroundColor: "#F59E0B",
+    backgroundColor: "#cccccc",
+    shadowOpacity: 0.1,
   },
 });
 
