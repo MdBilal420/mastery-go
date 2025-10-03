@@ -18,14 +18,14 @@ export default function RootLayout() {
     <Provider store={store}>
       <SafeAreaProvider>
         <GestureHandlerRootView style={{ flex: 1 }}>
-        <ElevenLabsProvider>
+        <ElevenLabsProvider key="sk_b4387de9c69ffa9762d60ee07820b18a71c63e3d96c8a254">
           <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
             <Stack>
               <Stack.Screen name="index" options={{ title: 'Select Book & Lesson', headerShown: false }} />
               <Stack.Screen name="profile-selection" options={{ title: 'Select Profile', headerShown: false }} />
               <Stack.Screen name="profile" options={{ title: 'Select Role' }} />
               <Stack.Screen name="roleplay" options={{ title: 'Role Play', headerShown: false }} />
-              <Stack.Screen name="roleplayai" options={{ title: 'AI Role Play', headerShown: false }} />
+              <Stack.Screen name="roleplay-test" options={{ title: 'AI Role Play', headerShown: false }} />
               <Stack.Screen name="feedback" options={{ title: 'Feedback', headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />

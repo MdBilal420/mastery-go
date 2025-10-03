@@ -60,7 +60,7 @@ export default function ProfileSelectionScreen() {
             profile: profile.title,
           })
         );
-        router.push("./roleplayai");
+        router.push("./roleplay-test");
       }
     }
   };
