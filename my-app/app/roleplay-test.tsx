@@ -16,18 +16,20 @@ import {
   TouchableOpacity,
   Keyboard,
   TouchableWithoutFeedback,
+  ScrollView,
   Platform,
+  Animated,
 } from "react-native";
 import { TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "../constants/theme";
 import { useRouter } from "expo-router";
-
+import { LinearGradient } from "expo-linear-gradient";
+import { ChatMessage } from "./chat-message";
 
 export default function RolePlayTestScreen() {
-
   const router = useRouter();
-
+  const [messages, setMessages] = useState<any[]>([]);
 
   const conversation = useConversation({
     clientTools: {},
@@ -53,6 +55,19 @@ export default function RolePlayTestScreen() {
         `💬 Message from ${source}:`,
         JSON.stringify(message, null, 2)
       );
+      if(message.type === "agent_response"){
+        const {agent_response_event} = message
+        setMessages((prevMessages) => [
+          ...prevMessages,
+          { source : "ai", message: agent_response_event.agent_response},
+        ])
+      }else if(message.type === "user_transcript"){
+        const {user_transcription_event} = message
+        setMessages((prevMessages) => [
+          ...prevMessages,
+          { source : "user", message: user_transcription_event.user_transcript},
+        ])
+      }
     },
     onModeChange: ({ mode }: { mode: "speaking" | "listening" }) => {
       console.log(`🔊 Mode: ${mode}`);
@@ -75,6 +90,8 @@ export default function RolePlayTestScreen() {
 
   const [isStarting, setIsStarting] = useState(false);
   const [textInput, setTextInput] = useState("");
+
+  const [gradientAnimation] = useState(new Animated.Value(0));
   const handleSubmitText = () => {
     if (textInput.trim()) {
       conversation.sendUserMessage(textInput.trim());
@@ -85,6 +102,14 @@ export default function RolePlayTestScreen() {
   const startConversation = useCallback(async () => {
     if (isStarting) return;
     setIsStarting(true);
+
+    // Start gradient animation
+    Animated.timing(gradientAnimation, {
+      toValue: 1,
+      duration: 1000,
+      useNativeDriver: false,
+    }).start();
+
     try {
       await conversation.startSession({
         agentId: "agent_7201k6mx18dae18tsve5zcqspjdn",
@@ -100,8 +125,15 @@ export default function RolePlayTestScreen() {
     } finally {
       setIsStarting(false);
     }
-  }, [isStarting, conversation]);
+  }, [isStarting, conversation, gradientAnimation]);
   const endConversation = async () => {
+    // Reset gradient animation
+    Animated.timing(gradientAnimation, {
+      toValue: 0,
+      duration: 800,
+      useNativeDriver: false,
+    }).start();
+
     try {
       await conversation.endSession();
     } catch (error) {
@@ -135,154 +167,138 @@ export default function RolePlayTestScreen() {
   const canStart = conversation.status === "disconnected" && !isStarting;
   const canEnd = conversation.status === "connected";
 
+  // Dynamic gradient colors based on conversation status
+  const getGradientColors = () => {
+    switch (conversation.status) {
+      case "connected":
+        // Mint to sky blue
+        return ["#84fab0", "#8fd3f4", "#a6c1ee"];
+      case "connecting":
+        // Peach to coral
+        return ["#fbc2eb", "#fda085", "#fddb92"];
+      case "disconnected":
+      default:
+        // Lavender to pale blue
+        return ["#e0c3fc", "#d5deff", "#e8eaf6"];
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <View style={styles.innerContainer}>
-        {/* Navigation Header */}
-        <View style={styles.navigationHeader}>
-          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.endConversationButton,
-              !canEnd && styles.disabledHeaderButton,
-            ]}
-            onPress={endConversation}
-            disabled={!canEnd}
-          >
-            <Ionicons
-              name="stop-circle"
-              size={20}
-              color={canEnd ? "#FF3B30" : "#cccccc"}
-            />
-            <Text
+      <LinearGradient
+        colors={getGradientColors()}
+        style={styles.gradientBackground}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <Animated.View
+          style={[
+            styles.animatedOverlay,
+            {
+              opacity: gradientAnimation.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 0.1],
+              }),
+            },
+          ]}
+        />
+        <View style={styles.innerContainer}>
+          {/* Navigation Header */}
+          <View style={styles.navigationHeader}>
+            <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+              <Text style={styles.backButtonText}>← Back</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[
-                styles.endConversationButtonText,
-                !canEnd && styles.disabledButtonText,
+                styles.endConversationButton,
+                !canEnd && styles.disabledHeaderButton,
               ]}
+              onPress={endConversation}
+              disabled={!canEnd}
             >
-              End
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-      <View style={styles.container}>
-        <Text style={styles.title}>ElevenLabs React Native Example</Text>
-        <Text style={styles.subtitle}>
-          Remember to set the agentId in the .env file!
-        </Text>
-        <View style={styles.statusContainer}>
-          <View
-            style={[
-              styles.statusDot,
-              { backgroundColor: getStatusColor(conversation.status) },
-            ]}
-          />
-          <Text style={styles.statusText}>
-            {getStatusText(conversation.status)}
-          </Text>
-        </View>
-        {/* Speaking Indicator */}
-        {conversation.status === "connected" && (
-          <View style={styles.speakingContainer}>
-            <View
-              style={[
-                styles.speakingDot,
-                {
-                  backgroundColor: conversation.isSpeaking
-                    ? "#8B5CF6"
-                    : "#D1D5DB",
-                },
-              ]}
-            />
-            <Text
-              style={[
-                styles.speakingText,
-                { color: conversation.isSpeaking ? "#8B5CF6" : "#9CA3AF" },
-              ]}
-            >
-              {conversation.isSpeaking ? "🎤 AI Speaking" : "👂 AI Listening"}
-            </Text>
+              <Ionicons
+                name="stop-circle"
+                size={20}
+                color={canEnd ? "#FF3B30" : "#cccccc"}
+              />
+              <Text
+                style={[
+                  styles.endConversationButtonText,
+                  !canEnd && styles.disabledButtonText,
+                ]}
+              >
+                End
+              </Text>
+            </TouchableOpacity>
           </View>
-        )}
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={[
-              styles.button,
-              styles.startButton,
-              !canStart && styles.disabledButton,
-            ]}
-            onPress={startConversation}
-            disabled={!canStart}
-          >
-            <Text style={styles.buttonText}>
-              {isStarting ? "Starting..." : "Start Conversation"}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.button,
-              styles.endButton,
-              !canEnd && styles.disabledButton,
-            ]}
-            onPress={endConversation}
-            disabled={!canEnd}
-          >
-            <Text style={styles.buttonText}>End Conversation</Text>
-          </TouchableOpacity>
-        </View>
 
-        {/* Text Input and Messaging */}
-        {conversation.status === "connected" && (
-          <View style={styles.messagingContainer}>
-            <Text style={styles.messagingLabel}>Send Text Message</Text>
-            <TextInput
-              style={styles.textInput}
-              value={textInput}
-              onChangeText={(text) => {
-                setTextInput(text);
-                // Prevent agent from interrupting while user is typing
-                if (text.length > 0) {
-                  conversation.sendUserActivity();
-                }
-              }}
-              placeholder="Type your message or context... (Press Enter to send)"
-              multiline
-              onSubmitEditing={handleSubmitText}
-              returnKeyType="send"
-              blurOnSubmit={true}
-            />
-            <View style={styles.messageButtons}>
-              <TouchableOpacity
-                style={[styles.button, styles.messageButton]}
-                onPress={handleSubmitText}
-                disabled={!textInput.trim()}
-              >
-                <Text style={styles.buttonText}>💬 Send Message</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, styles.contextButton]}
-                onPress={() => {
-                  if (textInput.trim()) {
-                    conversation.sendContextualUpdate(textInput.trim());
-                    setTextInput("");
-                    Keyboard.dismiss();
-                  }
-                }}
-                disabled={!textInput.trim()}
-              >
-                <Text style={styles.buttonText}>📝 Send Context</Text>
-              </TouchableOpacity>
+          {/* Display current selections */}
+          {book && chapter && profile && (
+            <View style={styles.contextContainer}>
+              <View style={styles.contextHeader}>
+                <Ionicons name="book" size={18} color={Colors.light.tint} />
+                <Text style={styles.contextTitle}>Current Session</Text>
+              </View>
+              <View style={styles.contextContent}>
+                <View style={styles.contextItem}>
+                  <Ionicons
+                    name="library"
+                    size={14}
+                    color={Colors.light.tint}
+                  />
+                  <Text style={styles.contextText}>Book: {book}</Text>
+                </View>
+                <View style={styles.contextItem}>
+                  <Ionicons
+                    name="document-text"
+                    size={14}
+                    color={Colors.light.tint}
+                  />
+                  <Text style={styles.contextText}>Chapter: {chapter}</Text>
+                </View>
+                <View style={styles.contextItem}>
+                  <Ionicons name="person" size={14} color={Colors.light.tint} />
+                  <Text style={styles.contextText}>Your Role: {profile}</Text>
+                </View>
+              </View>
             </View>
+          )}
+
+          <View style={styles.chatContainer}>
+              <ScrollView
+                style={styles.messagesList}
+                contentContainerStyle={styles.messagesContent}
+                showsVerticalScrollIndicator={false}
+              >
+                {messages.map((message, index) => (
+                  <ChatMessage key={index} message={message} />
+                ))}
+              </ScrollView>
+            </View>
+          {/* Button at the bottom */}
+          <View style={styles.bottomButtonContainer}>
+            <TouchableOpacity
+              style={[
+                styles.circularButton,
+                canStart && styles.startButton,
+                canEnd && styles.stopButton,
+                !canStart && !canEnd && styles.disabledButton,
+              ]}
+              onPress={canStart ? startConversation : endConversation}
+              disabled={!canStart && !canEnd}
+            >
+              <Ionicons
+                name={canEnd ? "pause" : "mic"}
+                size={32}
+                color="white"
+              />
+              <Text style={styles.buttonLabel}>
+                {isStarting ? "Starting..." : canEnd ? "Stop" : "Start"}
+              </Text>
+            </TouchableOpacity>
           </View>
-        )}
-      </View>
-    </TouchableWithoutFeedback>
-
-
-    </View>
+        </View>
+      </LinearGradient>
     </SafeAreaView>
   );
 }
@@ -290,13 +306,51 @@ export default function RolePlayTestScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
+  },
+  gradientBackground: {
+    flex: 1,
+  },
+  animatedOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "#000",
   },
   innerContainer: {
     flex: 1,
     padding: 20,
+  },
+  contentContainer: {
+    flex: 1,
+  },
+  middleContent: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  placeholderText: {
+    fontSize: 16,
+    color: "#6B7280",
+    textAlign: "center",
+  },
+  bottomButtonContainer: {
+    alignItems: "center",
+    paddingBottom: 40,
+    paddingTop: 20,
+  },
+  titleContainer: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 24,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
   navigationHeader: {
     flexDirection: "row",
@@ -312,6 +366,48 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.light.tint,
     fontWeight: "600",
+  },
+  contextContainer: {
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "rgba(0, 122, 255, 0.2)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  contextHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0, 122, 255, 0.1)",
+  },
+  contextTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1a1a1a",
+    marginLeft: 6,
+  },
+  contextContent: {
+    gap: 6,
+  },
+  contextItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 2,
+  },
+  contextText: {
+    fontSize: 14,
+    color: "#4a4a4a",
+    marginLeft: 8,
+    flex: 1,
+    fontWeight: "500",
   },
   endConversationButton: {
     flexDirection: "row",
@@ -354,6 +450,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 24,
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   statusDot: {
     width: 12,
@@ -401,29 +504,35 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   buttonContainer: {
-    width: "100%",
+    alignItems: "center",
     gap: 16,
   },
-  button: {
-    backgroundColor: "#3B82F6",
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 8,
+  circularButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: "center",
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   startButton: {
     backgroundColor: "#10B981",
   },
-  endButton: {
+  stopButton: {
     backgroundColor: "#EF4444",
   },
   disabledButton: {
     backgroundColor: "#9CA3AF",
   },
-  buttonText: {
+  buttonLabel: {
     color: "white",
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: "600",
+    marginTop: 8,
   },
   instructions: {
     marginTop: 24,
@@ -496,5 +605,17 @@ const styles = StyleSheet.create({
   },
   activityButton: {
     backgroundColor: "#F59E0B",
+  },
+  chatContainer: {
+    flex: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  messagesList: {
+    flex: 1,
+  },
+  messagesContent: {
+    paddingVertical: 16,
   },
 });
