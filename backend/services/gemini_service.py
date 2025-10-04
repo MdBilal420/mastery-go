@@ -5,7 +5,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-preview-05-20")  # Default to the correct model
+
+print(f"Using Gemini model: {GEMINI_MODEL}")  # Debug print
 
 async def generate_bot_intro(context: dict) -> str:
     """
@@ -78,7 +80,10 @@ async def _call_gemini_api(prompt: str) -> str:
     """
     Call the Gemini API with the given prompt.
     """
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GOOGLE_API_KEY}"
+    # Fix the URL construction - use just the model name, not the full path
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL.split('/')[-1]}:generateContent?key={GOOGLE_API_KEY}"
+    
+    print(f"Calling Gemini API: {url}")  # Debug print
     
     headers = {
         "Content-Type": "application/json"
@@ -92,7 +97,8 @@ async def _call_gemini_api(prompt: str) -> str:
         }]
     }
     
-    async with httpx.AsyncClient() as client:
+    # Add timeout parameter to prevent hanging
+    async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(url, json=payload, headers=headers)
         response.raise_for_status()
         
